@@ -257,7 +257,7 @@
                 <button class="btn-upload">📁 Upload Excel File</button>
                 <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="handleFileUpload(event)" />
             </div>
-            <button class="btn-clear" onclick="clearData()" title="Clear Stored Data">Reset</button>
+            <button class="btn-clear" onclick="clearData()" title="Reset Data">Reset</button>
         </div>
     </div>
 
@@ -345,10 +345,9 @@
                 const parts = strVal.split('/');
                 return `${parts[2]}-${parts[1]}-${parts[0]}`;
             }
-            return strVal;
+            return strVal.split('T')[0];
         }
 
-        // Load data from localStorage on startup if available
         window.onload = function() {
             const savedData = localStorage.getItem('orange_sales_data');
             if (savedData) {
@@ -385,12 +384,34 @@
                 filtered = rawData.filter(r => r.date === selectedDate);
             }
 
-            const deptMap = {};
-            
-            filtered.forEach(r => {
-                const dept = r.dept;
-                if (!dept || dept === 'Total' || dept === 'Notes / Status') return;
+            // Standard list of departments to ensure complete display
+            const standardDepts = [
+                "Accessories", "Blouse Material", "Boys UG", "Boys Wear", "Churidar", 
+                "Churidar Material", "Dress Materials", "Furnishing", "Girls UG", 
+                "Girls Wear", "Ladies Bottom wear", "Ladies Top Wear", "Ladies UG", 
+                "Mens Bottom Wear", "Mens UG", "Mens top wear", "New Born", "Saree", "Unassigned"
+            ];
 
+            const deptMap = {};
+            standardDepts.forEach(dept => {
+                deptMap[dept] = {
+                    dept: dept,
+                    target: 100000,
+                    sales: 0,
+                    profit: 0,
+                    staffSet: new Set(),
+                    billsSet: new Set(),
+                    units: 0,
+                    discounts: [],
+                    stockVal: 0,
+                    stockLt90Val: 0,
+                    stockGt180Val: 0
+                };
+            });
+
+            filtered.forEach(r => {
+                let dept = r.dept;
+                if (!dept || dept === 'Total' || dept === 'Notes / Status' || dept === 'Active') return;
                 if (!deptMap[dept]) {
                     deptMap[dept] = {
                         dept: dept,
@@ -415,7 +436,7 @@
                 deptMap[dept].profit += gp;
                 deptMap[dept].stockVal += stockCost;
 
-                if (r.sm && r.sm !== 'Unassigned' && r.sm !== 'nan') deptMap[dept].staffSet.add(r.sm);
+                if (r.sm && r.sm !== 'Unassigned' && r.sm !== 'nan' && r.sm !== '') deptMap[dept].staffSet.add(r.sm);
                 if (r.inv) deptMap[dept].billsSet.add(r.inv);
                 deptMap[dept].units += Number(r.qty) || 0;
                 if (r.dis !== undefined && !isNaN(r.dis)) deptMap[dept].discounts.push(Number(r.dis));
@@ -526,9 +547,9 @@
                 const json = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false});
 
                 let headerRowIndex = 0;
-                for (let i = 0; i < Math.min(10, json.length); i++) {
+                for (let i = 0; i < Math.min(15, json.length); i++) {
                     const rowStr = JSON.stringify(json[i]);
-                    if (rowStr.includes('Item Name') || rowStr.includes('Counter')) {
+                    if (rowStr.includes('Item Name') || rowStr.includes('Counter') || rowStr.includes('Amount')) {
                         headerRowIndex = i;
                         break;
                     }
@@ -580,7 +601,7 @@
                     try {
                         localStorage.setItem('orange_sales_data', JSON.stringify(rawData));
                     } catch(err) {
-                        console.warn("Local storage quota exceeded or blocked", err);
+                        console.warn("Local storage error", err);
                     }
                     alert('Successfully loaded and saved ' + parsedData.length + ' sales records!');
                     populateDateDropdown();
