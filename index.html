@@ -85,11 +85,16 @@
             background: #fff;
         }
 
+        .action-row {
+            display: flex;
+            gap: 10px;
+        }
+
         .upload-btn-wrapper {
             position: relative;
             overflow: hidden;
             display: inline-block;
-            width: 100%;
+            flex: 1;
         }
 
         .btn-upload {
@@ -114,6 +119,17 @@
             cursor: pointer;
         }
 
+        .btn-clear {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
         .kpi-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -128,6 +144,13 @@
             .filter-section {
                 flex-direction: row;
                 justify-content: space-between;
+                align-items: center;
+            }
+            .filter-group {
+                width: 50%;
+            }
+            .action-row {
+                width: 45%;
             }
         }
 
@@ -229,9 +252,12 @@
                 <option value="ALL">ALL (Cumulative View)</option>
             </select>
         </div>
-        <div class="upload-btn-wrapper">
-            <button class="btn-upload">📁 Upload Daily Excel File</button>
-            <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="handleFileUpload(event)" />
+        <div class="action-row">
+            <div class="upload-btn-wrapper">
+                <button class="btn-upload">📁 Upload Excel File</button>
+                <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="handleFileUpload(event)" />
+            </div>
+            <button class="btn-clear" onclick="clearData()" title="Clear Stored Data">Reset</button>
         </div>
     </div>
 
@@ -299,7 +325,6 @@
             return Number(val || 0).toLocaleString('en-IN');
         }
 
-        // Helper to convert Excel date values cleanly into YYYY-MM-DD
         function parseExcelDate(val) {
             if (!val) return "";
             if (typeof val === 'number') {
@@ -323,8 +348,23 @@
             return strVal;
         }
 
+        // Load data from localStorage on startup if available
+        window.onload = function() {
+            const savedData = localStorage.getItem('orange_sales_data');
+            if (savedData) {
+                try {
+                    rawData = JSON.parse(savedData);
+                    populateDateDropdown();
+                    updateDashboard();
+                } catch(e) {
+                    console.error("Error loading saved data", e);
+                }
+            }
+        };
+
         function populateDateDropdown() {
             const dateSelect = document.getElementById('dateFilter');
+            const currentVal = dateSelect.value;
             dateSelect.innerHTML = '<option value="ALL">ALL (Cumulative View)</option>';
             
             const dates = [...new Set(rawData.map(r => r.date).filter(Boolean))].sort().reverse();
@@ -334,6 +374,7 @@
                 opt.textContent = d;
                 dateSelect.appendChild(opt);
             });
+            if (currentVal) dateSelect.value = currentVal;
         }
 
         function updateDashboard() {
@@ -347,7 +388,9 @@
             const deptMap = {};
             
             filtered.forEach(r => {
-                const dept = r.dept || 'Unassigned';
+                const dept = r.dept;
+                if (!dept || dept === 'Total' || dept === 'Notes / Status') return;
+
                 if (!deptMap[dept]) {
                     deptMap[dept] = {
                         dept: dept,
@@ -366,16 +409,16 @@
 
                 const amt = Number(r.amt) || 0;
                 const gp = Number(r.gp) || 0;
-                const stockCost = amt - gp; // Rule: Stock Value = Sales - Profit
+                const stockCost = amt - gp; // Stock Value = Sales - Profit
 
                 deptMap[dept].sales += amt;
                 deptMap[dept].profit += gp;
                 deptMap[dept].stockVal += stockCost;
 
-                if (r.sm && r.sm !== 'Unassigned') deptMap[dept].staffSet.add(r.sm);
+                if (r.sm && r.sm !== 'Unassigned' && r.sm !== 'nan') deptMap[dept].staffSet.add(r.sm);
                 if (r.inv) deptMap[dept].billsSet.add(r.inv);
                 deptMap[dept].units += Number(r.qty) || 0;
-                if (r.dis) deptMap[dept].discounts.push(Number(r.dis));
+                if (r.dis !== undefined && !isNaN(r.dis)) deptMap[dept].discounts.push(Number(r.dis));
 
                 if (r.stkDate) {
                     const stkD = new Date(r.stkDate);
@@ -400,7 +443,7 @@
                 const d = deptMap[deptKey];
                 const achPct = d.target > 0 ? d.sales / d.target : 0;
                 const marginPct = d.sales > 0 ? d.profit / d.sales : 0;
-                const staffCount = d.staffSet.size || 1;
+                const staffCount = d.staffSet.size || (d.sales > 0 ? 1 : 0);
                 const billsCount = d.billsSet.size;
                 const footfall = billsCount * 2;
                 const avgDis = d.discounts.length ? (d.discounts.reduce((a,b)=>a+b,0)/d.discounts.length)/100 : 0;
@@ -484,36 +527,43 @@
 
                 let headerRowIndex = 0;
                 for (let i = 0; i < Math.min(10, json.length); i++) {
-                    if (json[i] && json[i].includes('Counter') || json[i].includes('Item Name')) {
+                    const rowStr = JSON.stringify(json[i]);
+                    if (rowStr.includes('Item Name') || rowStr.includes('Counter')) {
                         headerRowIndex = i;
                         break;
                     }
                 }
 
                 const headers = json[headerRowIndex] || [];
-                const idxDate = headers.indexOf('Date') !== -1 ? headers.indexOf('Date') : 3;
-                const idxAmt = headers.indexOf('Amount') !== -1 ? headers.indexOf('Amount') : 9;
-                const idxQty = headers.indexOf('Qty') !== -1 ? headers.indexOf('Qty') : 7;
-                const idxPprice = headers.indexOf('p price') !== -1 ? headers.indexOf('p price') : 16;
-                const idxDept = headers.indexOf('Counter') !== -1 ? headers.indexOf('Counter') : 14;
-                const idxSM = headers.indexOf('Sales man') !== -1 ? headers.indexOf('Sales man') : 11;
-                const idxInv = headers.indexOf('Invoice No') !== -1 ? headers.indexOf('Invoice No') : 2;
-                const idxDis = headers.indexOf('Dis %') !== -1 ? headers.indexOf('Dis %') : 8;
-                const idxStkDate = headers.indexOf('StockDate') !== -1 ? headers.indexOf('StockDate') : 15;
+                const getCol = (name, fallback) => headers.indexOf(name) !== -1 ? headers.indexOf(name) : fallback;
+
+                const idxDate = getCol('Date', 3);
+                const idxAmt = getCol('Amount', 9);
+                const idxQty = getCol('Qty', 7);
+                const idxPprice = getCol('p price', 16);
+                const idxDept = getCol('Counter', 14);
+                const idxSM = getCol('Sales man', 11);
+                const idxInv = getCol('Invoice No', 2);
+                const idxDis = getCol('Dis %', 8);
+                const idxStkDate = getCol('StockDate', 15);
+                const idxItem = getCol('Item Name', 0);
 
                 const parsedData = [];
                 for (let i = headerRowIndex + 1; i < json.length; i++) {
                     const r = json[i];
-                    if (!r || !r[0] || r[0] === 'Total') continue;
+                    if (!r || !r[idxItem] || String(r[idxItem]).trim() === '' || String(r[idxItem]) === 'Total') continue;
 
                     const amt = Number(String(r[idxAmt]||'0').replace(/,/g,'')) || 0;
                     const qty = Number(String(r[idxQty]||'0').replace(/,/g,'')) || 0;
                     const pprice = Number(String(r[idxPprice]||'0').replace(/,/g,'')) || 0;
                     const gp = amt - (qty * pprice);
                     const cleanDate = parseExcelDate(r[idxDate]);
+                    const deptVal = String(r[idxDept] || 'Unassigned').trim();
+
+                    if (!cleanDate) continue;
 
                     parsedData.push({
-                        dept: String(r[idxDept] || 'Unassigned').trim(),
+                        dept: deptVal === '' ? 'Unassigned' : deptVal,
                         date: cleanDate,
                         amt: amt,
                         gp: gp,
@@ -527,17 +577,30 @@
 
                 if (parsedData.length > 0) {
                     rawData = parsedData;
-                    alert('Updated dashboard with ' + parsedData.length + ' records!');
+                    try {
+                        localStorage.setItem('orange_sales_data', JSON.stringify(rawData));
+                    } catch(err) {
+                        console.warn("Local storage quota exceeded or blocked", err);
+                    }
+                    alert('Successfully loaded and saved ' + parsedData.length + ' sales records!');
                     populateDateDropdown();
                     updateDashboard();
                 } else {
-                    alert('Could not parse valid records.');
+                    alert('Could not parse valid sales records. Check file format.');
                 }
             };
             reader.readAsArrayBuffer(file);
         }
 
-        updateDashboard();
+        function clearData() {
+            if (confirm('Clear stored report data?')) {
+                localStorage.removeItem('orange_sales_data');
+                rawData = [];
+                populateDateDropdown();
+                updateDashboard();
+                alert('Data cleared.');
+            }
+        }
     </script>
 </body>
 </html>
