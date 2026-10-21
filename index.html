@@ -384,7 +384,6 @@
                 filtered = rawData.filter(r => r.date === selectedDate);
             }
 
-            // Standard list of departments to ensure complete display
             const standardDepts = [
                 "Accessories", "Blouse Material", "Boys UG", "Boys Wear", "Churidar", 
                 "Churidar Material", "Dress Materials", "Furnishing", "Girls UG", 
@@ -547,9 +546,9 @@
                 const json = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false});
 
                 let headerRowIndex = 0;
-                for (let i = 0; i < Math.min(15, json.length); i++) {
+                for (let i = 0; i < json.length; i++) {
                     const rowStr = JSON.stringify(json[i]);
-                    if (rowStr.includes('Item Name') || rowStr.includes('Counter') || rowStr.includes('Amount')) {
+                    if (rowStr.includes('Counter') && rowStr.includes('Amount') && rowStr.includes('Item Name')) {
                         headerRowIndex = i;
                         break;
                     }
