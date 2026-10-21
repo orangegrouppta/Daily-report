@@ -88,42 +88,20 @@
         .action-row {
             display: flex;
             gap: 10px;
+            align-items: center;
         }
 
-        .upload-btn-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
-            flex: 1;
-        }
-
-        .btn-upload {
-            border: 1.5px dashed var(--primary);
-            color: var(--primary);
-            background-color: #f0f4f8;
-            padding: 10px 12px;
-            border-radius: 6px;
-            font-size: 0.85rem;
+        .status-text {
+            font-size: 0.82rem;
             font-weight: 600;
-            width: 100%;
-            text-align: center;
-            cursor: pointer;
+            color: var(--primary);
         }
 
-        .upload-btn-wrapper input[type=file] {
-            font-size: 100px;
-            position: absolute;
-            left: 0;
-            top: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-        .btn-clear {
-            background-color: #dc3545;
+        .btn-refresh {
+            background-color: var(--primary);
             color: white;
             border: none;
-            padding: 10px 16px;
+            padding: 8px 14px;
             border-radius: 6px;
             font-size: 0.85rem;
             font-weight: 600;
@@ -148,9 +126,6 @@
             }
             .filter-group {
                 width: 50%;
-            }
-            .action-row {
-                width: 45%;
             }
         }
 
@@ -253,11 +228,8 @@
             </select>
         </div>
         <div class="action-row">
-            <div class="upload-btn-wrapper">
-                <button class="btn-upload">📁 Upload Excel File</button>
-                <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="handleFileUpload(event)" />
-            </div>
-            <button class="btn-clear" onclick="clearData()" title="Reset Data">Reset</button>
+            <span class="status-text" id="syncStatus">🔄 Syncing with Google Drive...</span>
+            <button class="btn-refresh" onclick="fetchDriveFile()">Reload Data</button>
         </div>
     </div>
 
@@ -311,6 +283,7 @@
     </div>
 
     <script>
+        const GOOGLE_DRIVE_FILE_ID = "1_zA8UmHLdTtoi2dGJPujLeZ-JepkJfoY";
         let rawData = [];
 
         function formatCurrency(val) {
@@ -348,18 +321,100 @@
             return strVal.split('T')[0];
         }
 
-        window.onload = function() {
-            const savedData = localStorage.getItem('orange_sales_data');
-            if (savedData) {
-                try {
-                    rawData = JSON.parse(savedData);
-                    populateDateDropdown();
-                    updateDashboard();
-                } catch(e) {
-                    console.error("Error loading saved data", e);
-                }
-            }
-        };
+        function fetchDriveFile() {
+            const syncStatus = document.getElementById('syncStatus');
+            syncStatus.textContent = '🔄 Fetching Google Drive File...';
+            
+            // Direct download link from Google Drive
+            const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_DRIVE_FILE_ID}/export?format=xlsx`;
+
+            fetch(url)
+                .then(res => {
+                    if (!res.ok) throw new Error('Network response was not ok');
+                    return res.arrayBuffer();
+                })
+                .then(buffer => {
+                    const data = new Uint8Array(buffer);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    
+                    // Prefer Raw Sales Data sheet if available
+                    let sheetName = workbook.SheetNames.includes('Raw Sales Data') ? 'Raw Sales Data' : workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false});
+
+                    let headerRowIndex = -1;
+                    for (let i = 0; i < json.length; i++) {
+                        const rowStr = JSON.stringify(json[i] || []);
+                        if (rowStr.includes('Counter') && rowStr.includes('Amount')) {
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (headerRowIndex === -1) {
+                        for (let i = 0; i < Math.min(10, json.length); i++) {
+                            if (json[i] && json[i].length > 5) {
+                                headerRowIndex = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    const headers = json[headerRowIndex] || [];
+                    const getCol = (name, fallback) => headers.indexOf(name) !== -1 ? headers.indexOf(name) : fallback;
+
+                    const idxDate = getCol('Date', 3);
+                    const idxAmt = getCol('Amount', 9);
+                    const idxQty = getCol('Qty', 7);
+                    const idxPprice = getCol('p price', 16);
+                    const idxDept = getCol('Counter', 14);
+                    const idxSM = getCol('Sales man', 11);
+                    const idxInv = getCol('Invoice No', 2);
+                    const idxDis = getCol('Dis %', 8);
+                    const idxStkDate = getCol('StockDate', 15);
+                    const idxItem = getCol('Item Name', 0);
+
+                    const parsedData = [];
+                    for (let i = headerRowIndex + 1; i < json.length; i++) {
+                        const r = json[i];
+                        if (!r || !r[idxItem] || String(r[idxItem]).trim() === '' || String(r[idxItem]) === 'Total') continue;
+
+                        const amt = Number(String(r[idxAmt]||'0').replace(/,/g,'')) || 0;
+                        const qty = Number(String(r[idxQty]||'0').replace(/,/g,'')) || 0;
+                        const pprice = Number(String(r[idxPprice]||'0').replace(/,/g,'')) || 0;
+                        const gp = amt - (qty * pprice);
+                        const cleanDate = parseExcelDate(r[idxDate]);
+                        const deptVal = String(r[idxDept] || 'Unassigned').trim();
+
+                        if (!cleanDate) continue;
+
+                        parsedData.push({
+                            dept: deptVal === '' ? 'Unassigned' : deptVal,
+                            date: cleanDate,
+                            amt: amt,
+                            gp: gp,
+                            sm: String(r[idxSM] || 'Unassigned').trim(),
+                            inv: String(r[idxInv] || ''),
+                            qty: qty,
+                            dis: Number(String(r[idxDis]||'0').replace(/,/g,'')) || 0,
+                            stkDate: parseExcelDate(r[idxStkDate])
+                        });
+                    }
+
+                    if (parsedData.length > 0) {
+                        rawData = parsedData;
+                        syncStatus.textContent = '✅ Connected to Google Drive';
+                        populateDateDropdown();
+                        updateDashboard();
+                    } else {
+                        syncStatus.textContent = '⚠️ File read, but no rows parsed.';
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    syncStatus.textContent = '⚠️ Check Drive sharing ("Anyone with link")';
+                });
+        }
 
         function populateDateDropdown() {
             const dateSelect = document.getElementById('dateFilter');
@@ -429,7 +484,7 @@
 
                 const amt = Number(r.amt) || 0;
                 const gp = Number(r.gp) || 0;
-                const stockCost = amt - gp; // Stock Value = Sales - Profit
+                const stockCost = amt - gp;
 
                 deptMap[dept].sales += amt;
                 deptMap[dept].profit += gp;
@@ -533,94 +588,10 @@
             document.getElementById('kpiBills').textContent = formatNumber(totBills);
         }
 
-        function handleFileUpload(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                const data = new Uint8Array(evt.target.result);
-                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                const json = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false});
-
-                let headerRowIndex = 0;
-                for (let i = 0; i < json.length; i++) {
-                    const rowStr = JSON.stringify(json[i]);
-                    if (rowStr.includes('Counter') && rowStr.includes('Amount') && rowStr.includes('Item Name')) {
-                        headerRowIndex = i;
-                        break;
-                    }
-                }
-
-                const headers = json[headerRowIndex] || [];
-                const getCol = (name, fallback) => headers.indexOf(name) !== -1 ? headers.indexOf(name) : fallback;
-
-                const idxDate = getCol('Date', 3);
-                const idxAmt = getCol('Amount', 9);
-                const idxQty = getCol('Qty', 7);
-                const idxPprice = getCol('p price', 16);
-                const idxDept = getCol('Counter', 14);
-                const idxSM = getCol('Sales man', 11);
-                const idxInv = getCol('Invoice No', 2);
-                const idxDis = getCol('Dis %', 8);
-                const idxStkDate = getCol('StockDate', 15);
-                const idxItem = getCol('Item Name', 0);
-
-                const parsedData = [];
-                for (let i = headerRowIndex + 1; i < json.length; i++) {
-                    const r = json[i];
-                    if (!r || !r[idxItem] || String(r[idxItem]).trim() === '' || String(r[idxItem]) === 'Total') continue;
-
-                    const amt = Number(String(r[idxAmt]||'0').replace(/,/g,'')) || 0;
-                    const qty = Number(String(r[idxQty]||'0').replace(/,/g,'')) || 0;
-                    const pprice = Number(String(r[idxPprice]||'0').replace(/,/g,'')) || 0;
-                    const gp = amt - (qty * pprice);
-                    const cleanDate = parseExcelDate(r[idxDate]);
-                    const deptVal = String(r[idxDept] || 'Unassigned').trim();
-
-                    if (!cleanDate) continue;
-
-                    parsedData.push({
-                        dept: deptVal === '' ? 'Unassigned' : deptVal,
-                        date: cleanDate,
-                        amt: amt,
-                        gp: gp,
-                        sm: String(r[idxSM] || 'Unassigned').trim(),
-                        inv: String(r[idxInv] || ''),
-                        qty: qty,
-                        dis: Number(String(r[idxDis]||'0').replace(/,/g,'')) || 0,
-                        stkDate: parseExcelDate(r[idxStkDate])
-                    });
-                }
-
-                if (parsedData.length > 0) {
-                    rawData = parsedData;
-                    try {
-                        localStorage.setItem('orange_sales_data', JSON.stringify(rawData));
-                    } catch(err) {
-                        console.warn("Local storage error", err);
-                    }
-                    alert('Successfully loaded and saved ' + parsedData.length + ' sales records!');
-                    populateDateDropdown();
-                    updateDashboard();
-                } else {
-                    alert('Could not parse valid sales records. Check file format.');
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        }
-
-        function clearData() {
-            if (confirm('Clear stored report data?')) {
-                localStorage.removeItem('orange_sales_data');
-                rawData = [];
-                populateDateDropdown();
-                updateDashboard();
-                alert('Data cleared.');
-            }
-        }
+        // Automatically fetch data from Google Drive when page loads
+        window.onload = function() {
+            fetchDriveFile();
+        };
     </script>
 </body>
 </html>
