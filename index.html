@@ -299,6 +299,30 @@
             return Number(val || 0).toLocaleString('en-IN');
         }
 
+        // Helper to convert Excel date values cleanly into YYYY-MM-DD
+        function parseExcelDate(val) {
+            if (!val) return "";
+            if (typeof val === 'number') {
+                const dateObj = XLSX.SSF.parse_date_code(val);
+                if (dateObj) {
+                    const y = dateObj.y;
+                    const m = String(dateObj.m).padStart(2, '0');
+                    const d = String(dateObj.d).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                }
+            }
+            const strVal = String(val).trim();
+            if (strVal.match(/^\d{2}-\d{2}-\d{4}$/)) {
+                const parts = strVal.split('-');
+                return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            if (strVal.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                const parts = strVal.split('/');
+                return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            return strVal;
+        }
+
         function populateDateDropdown() {
             const dateSelect = document.getElementById('dateFilter');
             dateSelect.innerHTML = '<option value="ALL">ALL (Cumulative View)</option>';
@@ -453,31 +477,51 @@
             const reader = new FileReader();
             reader.onload = function(evt) {
                 const data = new Uint8Array(evt.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
+                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
-                const json = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                const json = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false});
+
+                let headerRowIndex = 0;
+                for (let i = 0; i < Math.min(10, json.length); i++) {
+                    if (json[i] && json[i].includes('Counter') || json[i].includes('Item Name')) {
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+
+                const headers = json[headerRowIndex] || [];
+                const idxDate = headers.indexOf('Date') !== -1 ? headers.indexOf('Date') : 3;
+                const idxAmt = headers.indexOf('Amount') !== -1 ? headers.indexOf('Amount') : 9;
+                const idxQty = headers.indexOf('Qty') !== -1 ? headers.indexOf('Qty') : 7;
+                const idxPprice = headers.indexOf('p price') !== -1 ? headers.indexOf('p price') : 16;
+                const idxDept = headers.indexOf('Counter') !== -1 ? headers.indexOf('Counter') : 14;
+                const idxSM = headers.indexOf('Sales man') !== -1 ? headers.indexOf('Sales man') : 11;
+                const idxInv = headers.indexOf('Invoice No') !== -1 ? headers.indexOf('Invoice No') : 2;
+                const idxDis = headers.indexOf('Dis %') !== -1 ? headers.indexOf('Dis %') : 8;
+                const idxStkDate = headers.indexOf('StockDate') !== -1 ? headers.indexOf('StockDate') : 15;
 
                 const parsedData = [];
-                for (let i = 5; i < json.length; i++) {
+                for (let i = headerRowIndex + 1; i < json.length; i++) {
                     const r = json[i];
                     if (!r || !r[0] || r[0] === 'Total') continue;
 
-                    const amt = Number(r[9]) || 0;
-                    const qty = Number(r[7]) || 0;
-                    const pprice = Number(r[16]) || 0;
+                    const amt = Number(String(r[idxAmt]||'0').replace(/,/g,'')) || 0;
+                    const qty = Number(String(r[idxQty]||'0').replace(/,/g,'')) || 0;
+                    const pprice = Number(String(r[idxPprice]||'0').replace(/,/g,'')) || 0;
                     const gp = amt - (qty * pprice);
+                    const cleanDate = parseExcelDate(r[idxDate]);
 
                     parsedData.push({
-                        dept: String(r[14] || 'Unassigned').trim(),
-                        date: String(r[3] || '').trim(),
+                        dept: String(r[idxDept] || 'Unassigned').trim(),
+                        date: cleanDate,
                         amt: amt,
                         gp: gp,
-                        sm: String(r[11] || 'Unassigned').trim(),
-                        inv: String(r[2] || ''),
+                        sm: String(r[idxSM] || 'Unassigned').trim(),
+                        inv: String(r[idxInv] || ''),
                         qty: qty,
-                        dis: Number(r[8]) || 0,
-                        stkDate: String(r[15] || '').trim()
+                        dis: Number(String(r[idxDis]||'0').replace(/,/g,'')) || 0,
+                        stkDate: parseExcelDate(r[idxStkDate])
                     });
                 }
 
