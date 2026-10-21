@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orange Wedding Store - Daily Management Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #1f4e78;
+            --primary-dark: #153755;
+            --bg-light: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-dark: #333333;
+            --border-color: #dee2e6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            padding: 12px;
+            padding-bottom: 40px;
+        }
+
+        .header-card {
+            background: linear-gradient(135deg, #1f4e78, #002060);
+            color: white;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+
+        .header-card h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .header-card p {
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .filter-section {
+            background: var(--card-bg);
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .filter-group label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--primary);
+            white-space: nowrap;
+        }
+
+        .filter-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1.5px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            outline: none;
+            background: #fff;
+        }
+
+        .upload-btn-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .btn-upload {
+            border: 1.5px dashed var(--primary);
+            color: var(--primary);
+            background-color: #f0f4f8;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            width: 100%;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .upload-btn-wrapper input[type=file] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        @media (min-width: 768px) {
+            .kpi-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            .filter-section {
+                flex-direction: row;
+                justify-content: space-between;
+            }
+        }
+
+        .kpi-card {
+            background: var(--card-bg);
+            padding: 12px;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            border-left: 4px solid var(--primary);
+        }
+
+        .kpi-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .kpi-value {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #111;
+        }
+
+        .table-container {
+            background: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            min-width: 900px;
+        }
+
+        th {
+            background-color: var(--primary);
+            color: white;
+            padding: 10px 8px;
+            text-align: center;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 8px 8px;
+            border-bottom: 1px solid var(--border-color);
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        td.text-left {
+            text-align: left;
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9fbfd;
+        }
+
+        tr.total-row {
+            background-color: #d9e1f2;
+            font-weight: 700;
+            border-top: 2px solid var(--primary);
+            border-bottom: 3px double var(--primary);
+        }
+
+        tr.total-row td {
+            color: #000;
+            font-size: 0.85rem;
+        }
+
+        .status-badge {
+            background: #e6f4ea;
+            color: #137333;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-card">
+        <h1>ORANGE WEDDING STORE</h1>
+        <p>Daily Management Mobile Report</p>
+    </div>
+
+    <div class="filter-section">
+        <div class="filter-group">
+            <label for="dateFilter">Select Date View:</label>
+            <select id="dateFilter" onchange="updateDashboard()">
+                <option value="ALL">ALL (Cumulative View)</option>
+            </select>
+        </div>
+        <div class="upload-btn-wrapper">
+            <button class="btn-upload">📁 Upload Daily Excel File</button>
+            <input type="file" id="excelFile" accept=".xlsx, .xls" onchange="handleFileUpload(event)" />
+        </div>
+    </div>
+
+    <div class="kpi-grid">
+        <div class="kpi-card" style="border-left-color: #1f4e78;">
+            <div class="kpi-title">Actual Sales</div>
+            <div class="kpi-value" id="kpiSales">₹0.00</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: #28a745;">
+            <div class="kpi-title">Gross Profit</div>
+            <div class="kpi-value" id="kpiProfit">₹0.00</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: #ffc107;">
+            <div class="kpi-title">Gross Margin %</div>
+            <div class="kpi-value" id="kpiMargin">0.0%</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: #17a2b8;">
+            <div class="kpi-title">Total Bills</div>
+            <div class="kpi-value" id="kpiBills">0</div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>Sales Target</th>
+                    <th>Actual Sales</th>
+                    <th>Achievement %</th>
+                    <th>Gross Margin %</th>
+                    <th>Gross Profit</th>
+                    <th>Sales Staff Count</th>
+                    <th>Footfall</th>
+                    <th>Bills</th>
+                    <th>Units</th>
+                    <th>Discount %</th>
+                    <th>Stock Value</th>
+                    <th>Stock &lt; 90 Days %</th>
+                    <th>Stock &gt; 180 Days %</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="reportTableBody">
+            </tbody>
+            <tfoot>
+                <tr class="total-row" id="reportTableFooter">
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <script>
+        let rawData = [];
+
+        function formatCurrency(val) {
+            return '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatPercent(val) {
+            return (Number(val || 0) * 100).toFixed(1) + '%';
+        }
+
+        function formatNumber(val) {
+            return Number(val || 0).toLocaleString('en-IN');
+        }
+
+        function populateDateDropdown() {
+            const dateSelect = document.getElementById('dateFilter');
+            dateSelect.innerHTML = '<option value="ALL">ALL (Cumulative View)</option>';
+            
+            const dates = [...new Set(rawData.map(r => r.date).filter(Boolean))].sort().reverse();
+            dates.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = d;
+                dateSelect.appendChild(opt);
+            });
+        }
+
+        function updateDashboard() {
+            const selectedDate = document.getElementById('dateFilter').value;
+            
+            let filtered = rawData;
+            if (selectedDate !== 'ALL') {
+                filtered = rawData.filter(r => r.date === selectedDate);
+            }
+
+            const deptMap = {};
+            
+            filtered.forEach(r => {
+                const dept = r.dept || 'Unassigned';
+                if (!deptMap[dept]) {
+                    deptMap[dept] = {
+                        dept: dept,
+                        target: 100000,
+                        sales: 0,
+                        profit: 0,
+                        staffSet: new Set(),
+                        billsSet: new Set(),
+                        units: 0,
+                        discounts: [],
+                        stockVal: 0,
+                        stockLt90Val: 0,
+                        stockGt180Val: 0
+                    };
+                }
+
+                const amt = Number(r.amt) || 0;
+                const gp = Number(r.gp) || 0;
+                const stockCost = amt - gp; // Rule: Stock Value = Sales - Profit
+
+                deptMap[dept].sales += amt;
+                deptMap[dept].profit += gp;
+                deptMap[dept].stockVal += stockCost;
+
+                if (r.sm && r.sm !== 'Unassigned') deptMap[dept].staffSet.add(r.sm);
+                if (r.inv) deptMap[dept].billsSet.add(r.inv);
+                deptMap[dept].units += Number(r.qty) || 0;
+                if (r.dis) deptMap[dept].discounts.push(Number(r.dis));
+
+                if (r.stkDate) {
+                    const stkD = new Date(r.stkDate);
+                    const today = new Date();
+                    const diffDays = Math.floor((today - stkD) / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays < 90) deptMap[dept].stockLt90Val += stockCost;
+                    if (diffDays > 180) deptMap[dept].stockGt180Val += stockCost;
+                }
+            });
+
+            const tbody = document.getElementById('reportTableBody');
+            tbody.innerHTML = '';
+
+            let totTarget = 0, totSales = 0, totProfit = 0, totStaff = 0, totFootfall = 0;
+            let totBills = 0, totUnits = 0, totStock = 0, totStockLt90 = 0, totStockGt180 = 0;
+            let allDiscounts = [];
+
+            const depts = Object.keys(deptMap).sort();
+
+            depts.forEach(deptKey => {
+                const d = deptMap[deptKey];
+                const achPct = d.target > 0 ? d.sales / d.target : 0;
+                const marginPct = d.sales > 0 ? d.profit / d.sales : 0;
+                const staffCount = d.staffSet.size || 1;
+                const billsCount = d.billsSet.size;
+                const footfall = billsCount * 2;
+                const avgDis = d.discounts.length ? (d.discounts.reduce((a,b)=>a+b,0)/d.discounts.length)/100 : 0;
+                const stockLt90Pct = d.stockVal > 0 ? d.stockLt90Val / d.stockVal : 0;
+                const stockGt180Pct = d.stockVal > 0 ? d.stockGt180Val / d.stockVal : 0;
+
+                totTarget += d.target;
+                totSales += d.sales;
+                totProfit += d.profit;
+                totStaff += staffCount;
+                totBills += billsCount;
+                totFootfall += footfall;
+                totUnits += d.units;
+                totStock += d.stockVal;
+                totStockLt90 += d.stockLt90Val;
+                totStockGt180 += d.stockGt180Val;
+                allDiscounts.push(...d.discounts);
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="text-left">${d.dept}</td>
+                    <td>${formatCurrency(d.target)}</td>
+                    <td>${formatCurrency(d.sales)}</td>
+                    <td>${formatPercent(achPct)}</td>
+                    <td>${formatPercent(marginPct)}</td>
+                    <td>${formatCurrency(d.profit)}</td>
+                    <td>${formatNumber(staffCount)}</td>
+                    <td>${formatNumber(footfall)}</td>
+                    <td>${formatNumber(billsCount)}</td>
+                    <td>${formatNumber(d.units)}</td>
+                    <td>${formatPercent(avgDis)}</td>
+                    <td>${formatCurrency(d.stockVal)}</td>
+                    <td>${formatPercent(stockLt90Pct)}</td>
+                    <td>${formatPercent(stockGt180Pct)}</td>
+                    <td><span class="status-badge">Active</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            const totAchPct = totTarget > 0 ? totSales / totTarget : 0;
+            const totMarginPct = totSales > 0 ? totProfit / totSales : 0;
+            const totAvgDis = allDiscounts.length ? (allDiscounts.reduce((a,b)=>a+b,0)/allDiscounts.length)/100 : 0;
+            const totStockLt90Pct = totStock > 0 ? totStockLt90 / totStock : 0;
+            const totStockGt180Pct = totStock > 0 ? totStockGt180 / totStock : 0;
+
+            document.getElementById('reportTableFooter').innerHTML = `
+                <td class="text-left">TOTAL / AVERAGE</td>
+                <td>${formatCurrency(totTarget)}</td>
+                <td>${formatCurrency(totSales)}</td>
+                <td>${formatPercent(totAchPct)}</td>
+                <td>${formatPercent(totMarginPct)}</td>
+                <td>${formatCurrency(totProfit)}</td>
+                <td>${formatNumber(totStaff)}</td>
+                <td>${formatNumber(totFootfall)}</td>
+                <td>${formatNumber(totBills)}</td>
+                <td>${formatNumber(totUnits)}</td>
+                <td>${formatPercent(totAvgDis)}</td>
+                <td>${formatCurrency(totStock)}</td>
+                <td>${formatPercent(totStockLt90Pct)}</td>
+                <td>${formatPercent(totStockGt180Pct)}</td>
+                <td></td>
+            `;
+
+            document.getElementById('kpiSales').textContent = formatCurrency(totSales);
+            document.getElementById('kpiProfit').textContent = formatCurrency(totProfit);
+            document.getElementById('kpiMargin').textContent = formatPercent(totMarginPct);
+            document.getElementById('kpiBills').textContent = formatNumber(totBills);
+        }
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+
+                const parsedData = [];
+                for (let i = 5; i < json.length; i++) {
+                    const r = json[i];
+                    if (!r || !r[0] || r[0] === 'Total') continue;
+
+                    const amt = Number(r[9]) || 0;
+                    const qty = Number(r[7]) || 0;
+                    const pprice = Number(r[16]) || 0;
+                    const gp = amt - (qty * pprice);
+
+                    parsedData.push({
+                        dept: String(r[14] || 'Unassigned').trim(),
+                        date: String(r[3] || '').trim(),
+                        amt: amt,
+                        gp: gp,
+                        sm: String(r[11] || 'Unassigned').trim(),
+                        inv: String(r[2] || ''),
+                        qty: qty,
+                        dis: Number(r[8]) || 0,
+                        stkDate: String(r[15] || '').trim()
+                    });
+                }
+
+                if (parsedData.length > 0) {
+                    rawData = parsedData;
+                    alert('Updated dashboard with ' + parsedData.length + ' records!');
+                    populateDateDropdown();
+                    updateDashboard();
+                } else {
+                    alert('Could not parse valid records.');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        updateDashboard();
+    </script>
+</body>
+</html>
